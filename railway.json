@@ -1,3 +1,10 @@
 {
-  "rootDirectory": "backend"
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "cd backend && npm install"
+  },
+  "deploy": {
+    "startCommand": "cd backend && node servidor.js",
+    "restartPolicyType": "NEVER"
+  }
 }
