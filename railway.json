@@ -1,6 +1,3 @@
 {
-  "rootDirectory": "backend",
-  "build": {
-    "builder": "NIXPACKS"
-  }
+  "rootDirectory": "backend"
 }
