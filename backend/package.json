@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "Servidor.js",
   "scripts": {
     "start": "node Servidor.js",
     "dev": "nodemon index.js"
