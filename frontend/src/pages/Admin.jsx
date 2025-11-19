@@ -1,45 +1,51 @@
-import React from "react";
-import Navbar from "../components/Navbar";
-import "./Admin.css";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
-export default function Admin() {
-  const turnos = [
-    { id: 1, cliente: "Lucía", servicio: "Corte", hora: "10:00", dia: "Lunes" },
-    { id: 2, cliente: "Carla", servicio: "Coloración", hora: "14:30", dia: "Martes" },
-    { id: 3, cliente: "Sofía", servicio: "Peinado", hora: "16:00", dia: "Jueves" },
-  ];
+const URL_BASE = 'http://localhost:5000';
+
+const Admin = () => {
+  const [turnos, setTurnos] = useState([]);
+
+  const obtenerTurnos = async () => {
+    try {
+      const response = await axios.get(`${URL_BASE}/turnos`);
+      setTurnos(response.data);
+    } catch (error) {
+      console.error('Error al obtener turnos:', error);
+    }
+  };
+
+  useEffect(() => {
+    obtenerTurnos();
+  }, []);
 
   return (
-    <div className="admin-container">
-      <Navbar />
-      <div className="admin-panel">
-        <h2>Panel de Administración</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Servicio</th>
-              <th>Hora</th>
-              <th>Día</th>
-              <th>Acciones</th>
+    <div>
+      <h1>Panel Admin — Turnos</h1>
+
+      <table border="1">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Servicio</th>
+            <th>Hora</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {turnos.map((t) => (
+            <tr key={t.id}>
+              <td>{t.cliente}</td>
+              <td>{t.servicio}</td>
+              <td>{t.hora}</td>
+              <td>{t.fecha}</td>
             </tr>
-          </thead>
-          <tbody>
-            {turnos.map((t) => (
-              <tr key={t.id}>
-                <td>{t.cliente}</td>
-                <td>{t.servicio}</td>
-                <td>{t.hora}</td>
-                <td>{t.dia}</td>
-                <td>
-                  <button className="editar">Editar</button>
-                  <button className="eliminar">Eliminar</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
-}
+};
+
+export default Admin;

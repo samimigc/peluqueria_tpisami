@@ -1,87 +1,158 @@
+// ---------------------------------------------------------
+// 🌐 CONFIGURACIÓN BASE DEL SERVIDOR
+// ---------------------------------------------------------
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
-const mysql = require("mysql2");
+const db = require("./db");
+const bcrypt = require("bcrypt");
 
+// JWT de la librería hashpass
+const { compararPassword, generarToken } = require("@damianegreco/hashpass");
+const { TOKEN_SECRET } = process.env;
+
+// Middleware (igual al del profe)
+const auth = require("./middleware");
+
+// Crear servidor
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
+// Middlewares globales
 app.use(cors());
 app.use(express.json());
 
-// 🔌 Conexión a MySQL
-const conexion = mysql.createConnection({
-  host: "162.241.60.178",
-  port: 3306,
-  user: "gutierrezs",
-  password: "47588978",
-  database: "25_72_gutierrezs"
-});
+// ---------------------------------------------------------
+// 📌 REGISTRO DE USUARIO
+// ---------------------------------------------------------
+app.post("/usuarios", async (req, res) => {
+    const { nombre, email, password, rol } = req.body;
 
-conexion.connect((err) => {
-  if (err) {
-    console.error("❌ Error al conectar a MySQL:", err);
-  } else {
-    console.log("✅ Conectado a MySQL correctamente!");
-  }
-});
-
-// 📌 ====================
-//      RUTAS CRUD
-// ====================
-
-// 📌 GET - Obtener todos los turnos
-app.get("/turnos", (req, res) => {
-  conexion.query("SELECT * FROM turnos", (err, resultados) => {
-    if (err) return res.status(500).json(err);
-    res.json(resultados);
-  });
-});
-
-// 📌 POST - Crear un turno
-app.post("/turnos", (req, res) => {
-  const { cliente, servicio, hora, fecha } = req.body;
-
-  conexion.query(
-    "INSERT INTO turnos (cliente, servicio, hora, fecha) VALUES (?, ?, ?, ?)",
-    [cliente, servicio, hora, fecha],
-    (err, resultado) => {
-      if (err) return res.status(500).json(err);
-      res.status(201).json({ mensaje: "Turno creado correctamente 💇‍♀️" });
+    if (!email || !password) {
+        return res.status(400).json({ mensaje: "Email y contraseña son obligatorios." });
     }
-  );
-});
 
-// 📌 PUT - Actualizar turno
-app.put("/turnos/:id", (req, res) => {
-  const id = req.params.id;
-  const { servicio, hora, fecha } = req.body;
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
 
-  conexion.query(
-    "UPDATE turnos SET servicio=?, hora=?, fecha=? WHERE id=?",
-    [servicio, hora, fecha, id],
-    (err) => {
-      if (err) return res.status(500).json(err);
-      res.json({ mensaje: "Turno actualizado correctamente ✂️" });
+        await db.execute(
+            "INSERT INTO usuarios (nombre, email, password, rol) VALUES (?, ?, ?, ?)",
+            [nombre, email, hashedPassword, rol || "cliente"]
+        );
+
+        res.status(201).json({ mensaje: "Usuario creado exitosamente." });
+    } catch (error) {
+        if (error.code === "ER_DUP_ENTRY") {
+            return res.status(409).json({ mensaje: "El email ya está registrado." });
+        }
+
+        console.error(error);
+        res.status(500).json({ mensaje: "Error interno al registrar usuario." });
     }
-  );
 });
 
-// 📌 DELETE - Borrar turno
-app.delete("/turnos/:id", (req, res) => {
-  const id = req.params.id;
+// ---------------------------------------------------------
+// 📌 LOGIN (Genera token con hashpass)
+// ---------------------------------------------------------
+app.post("/login", async (req, res) => {
+    const { email, password } = req.body;
 
-  conexion.query("DELETE FROM turnos WHERE id=?", [id], (err) => {
-    if (err) return res.status(500).json(err);
-    res.json({ mensaje: "Turno eliminado correctamente 🗑️" });
-  });
+    if (!email || !password) {
+        return res.status(400).json({ mensaje: "Email y contraseña obligatorios." });
+    }
+
+    try {
+        // Buscar usuario
+        const [rows] = await db.execute(
+            "SELECT id, nombre, email, password, rol FROM usuarios WHERE email = ? LIMIT 1",
+            [email]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ mensaje: "Usuario no encontrado." });
+        }
+
+        const user = rows[0];
+
+        // Verificar contraseña
+        const passwordCorrecta = await compararPassword(password, user.password);
+        if (!passwordCorrecta) {
+            return res.status(401).json({ mensaje: "Contraseña incorrecta." });
+        }
+
+        // Info que va dentro del token
+        const userData = {
+            id: user.id,
+            nombre: user.nombre,
+            email: user.email,
+            rol: user.rol,
+        };
+
+        // Generar token
+        const token = generarToken(userData, TOKEN_SECRET, "1h");
+
+        res.json({
+            mensaje: "Login exitoso",
+            usuario: userData,
+            token: token,
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ mensaje: "Error interno en el login." });
+    }
 });
 
-// 📌 Ruta raíz
+// ---------------------------------------------------------
+// 📌 RUTA PROTEGIDA: OBTENER TURNOS (solo usuarios logueados)
+// ---------------------------------------------------------
+app.get("/turnos", auth, async (req, res) => {
+    try {
+        const [resultados] = await db.execute("SELECT * FROM turnos");
+        res.json(resultados);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Error al obtener turnos." });
+    }
+});
+
+// ---------------------------------------------------------
+// 📌 RUTA PROTEGIDA: CREAR TURNO (solo ADMIN)
+// ---------------------------------------------------------
+app.post("/turnos", auth, async (req, res) => {
+
+    // VERIFICAR ROL
+    if (req.user.rol !== "admin") {
+        return res.status(403).json({ mensaje: "No tenés permisos (solo admins)." });
+    }
+
+    const { cliente, servicio, hora, fecha } = req.body;
+
+    try {
+        await db.execute(
+            "INSERT INTO turnos (cliente, servicio, hora, fecha) VALUES (?, ?, ?, ?)",
+            [cliente, servicio, hora, fecha]
+        );
+
+        res.status(201).json({ mensaje: "Turno creado correctamente." });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Error al crear turno." });
+    }
+});
+
+// ---------------------------------------------------------
+// 📌 HOME
+// ---------------------------------------------------------
 app.get("/", (req, res) => {
-  res.send("Servidor backend con MySQL funcionando 💇‍♀️");
+    res.send("Backend funcionando 🚀");
 });
 
-// 🚀 Iniciar servidor
+// ---------------------------------------------------------
+// 🚀 INICIO DEL SERVIDOR
+// ---------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
+    console.log(`Servidor escuchando en http://localhost:${PORT}`);
 });

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "./Inicio.css";
 
+const URL_BASE = "http://localhost:5000";
+
 export default function Inicio() {
   const [turnos, setTurnos] = useState([]);
   const [formData, setFormData] = useState({
@@ -11,42 +13,46 @@ export default function Inicio() {
     fecha: "",
   });
 
-  // Cargar turnos desde MySQL
-  useEffect(() => {
-    axios.get("http://localhost:5000/turnos")
-      .then((res) => setTurnos(res.data))
-      .catch((err) => console.error(err));
-  }, []);
-
-  // Manejar envío del formulario
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    axios.post("http://localhost:5000/turnos", formData)
-      .then(() => {
-        alert("Turno guardado 💇‍♀️");
-        setFormData({ cliente: "", servicio: "", hora: "", fecha: "" });
-
-        // Recargar lista
-        axios.get("http://localhost:5000/turnos")
-          .then((res) => setTurnos(res.data));
-      })
-      .catch((err) => console.error(err));
+  // Cargar turnos desde el backend
+  const obtenerTurnos = async () => {
+    try {
+      const res = await axios.get(`${URL_BASE}/turnos`);
+      setTurnos(res.data);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  // Manejar cambios
+  useEffect(() => {
+    obtenerTurnos();
+  }, []);
+
+  // Manejar cambios en inputs
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Enviar turno
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${URL_BASE}/turnos`, formData);
+      alert("Turno guardado 💇‍♀️");
+      setFormData({ cliente: "", servicio: "", hora: "", fecha: "" });
+      obtenerTurnos(); // Recargar
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Eliminar turno
-  const eliminarTurno = (id) => {
-    if (window.confirm("¿Eliminar este turno?")) {
-      axios.delete(`http://localhost:5000/turnos/${id}`)
-        .then(() => {
-          setTurnos(turnos.filter((t) => t.id !== id));
-        })
-        .catch((err) => console.error(err));
+  const eliminarTurno = async (id) => {
+    if (!window.confirm("¿Eliminar este turno?")) return;
+    try {
+      await axios.delete(`${URL_BASE}/turnos/${id}`);
+      setTurnos(turnos.filter((t) => t.id !== id));
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -59,8 +65,8 @@ export default function Inicio() {
 
       <section className="formulario-turno">
         <h2>Reservar turno</h2>
+
         <form onSubmit={handleSubmit}>
-          
           <input
             type="text"
             name="cliente"
@@ -101,11 +107,11 @@ export default function Inicio() {
 
       <section className="turnos-lista">
         <h2>Turnos registrados</h2>
+
         <ul>
           {turnos.map((t) => (
             <li key={t.id}>
-              <strong>{t.cliente}</strong> — {t.servicio}
-              <br />
+              <strong>{t.cliente}</strong> — {t.servicio} <br />
               🕑 {t.hora} — 📅 {t.fecha}
               <br />
               <button onClick={() => eliminarTurno(t.id)}>🗑️ Eliminar</button>
